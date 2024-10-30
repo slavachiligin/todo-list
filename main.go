@@ -3,18 +3,28 @@
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"todo-list/handlers"
 )
 
 // Config Структура конфигурации
 type Config struct {
 	DatabaseURL string `env:"DATABASE_URL" env-required:"true"`
 }
+
+type Note struct {
+	ID      int    `json:"id"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+var db *pgx.Conn
 
 // Создание переменной для хранения пула соединений
 var dbPool *pgxpool.Pool
@@ -38,19 +48,6 @@ func initDB(cfg Config) error {
 	return nil
 }
 
-// Функция-обработчик для маршрута /note
-func noteHandler(w http.ResponseWriter, r *http.Request) {
-	// Выполнение запроса к базе данных
-	var noteContent string
-	err := dbPool.QueryRow(context.Background(), "SELECT content FROM notes WHERE id=$1", 1).Scan(&noteContent)
-	if err != nil {
-		http.Error(w, "Ошибка получения заметки", http.StatusInternalServerError)
-		return
-	}
-
-	fmt.Fprintln(w, "Note:", noteContent)
-}
-
 func main() {
 	// Явная загрузка .env файла перед инициализацией cleanenv
 	if err := godotenv.Load(".env"); err != nil {
@@ -69,8 +66,16 @@ func main() {
 	}
 	defer dbPool.Close()
 
+	var err error
+	db, err = pgx.Connect(context.Background(), "postgres://slavachiligin@localhost:5432/postgres?sslmode=disable")
+	if err != nil {
+		log.Fatalf("Ошибка инициализации базы данных: %v\n", err)
+	}
+	defer db.Close(context.Background())
+
 	// Роутинг
-	http.HandleFunc("/note", noteHandler)
+	http.HandleFunc("/note", handlers.NoteHandler)
+	http.HandleFunc("/api/notes", handlers.CreateNoteHandler)
 
 	// Запуск сервера
 	fmt.Println("Сервер запущен на :8080")
